@@ -1,0 +1,111 @@
+name: Build, test installed wheels and release
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openfe-flex-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'build>=1.2,<2'
+      - run: python -m build
+      - name: Verify package contents, version and checksums
+        run: python .github/scripts/distribution.py prepare
+      - name: Verify release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python .github/scripts/distribution.py verify --tag="$RELEASE_TAG"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: openfe-flex-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  test-wheel:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-15, macos-15-intel]
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Create a clean wheel-test environment
+        run: python -c "import os,pathlib,venv; venv.create('.ci-venv', with_pip=True); p=pathlib.Path('.ci-venv').resolve()/('Scripts' if os.name=='nt' else 'bin'); open(os.environ['GITHUB_PATH'],'a').write(str(p)+'\n')"
+      - name: Install OpenMP runtime for LightGBM on macOS
+        if: runner.os == 'macOS'
+        run: brew list libomp >/dev/null 2>&1 || brew install libomp
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: openfe-flex-distributions
+          path: dist
+      - name: Install and test core wheel without model extras
+        run: |
+          python .github/scripts/distribution.py install
+          python -c "from pathlib import Path; import openfe_flex; assert not Path(openfe_flex.__file__).is_relative_to(Path('src').resolve()), openfe_flex.__file__"
+          python -m unittest discover -s tests -v
+      - name: Test LightGBM-only installation
+        run: |
+          python .github/scripts/distribution.py install --extras lightgbm
+          python -c "import importlib.util; assert importlib.util.find_spec('catboost') is None"
+          python -m unittest discover -s tests -v
+          python examples/classification.py --backend lightgbm --classes 3 --candidates 6 --keep 3
+      - name: Test both model extras
+        run: |
+          python .github/scripts/distribution.py install --extras all
+          python -m unittest discover -s tests -v
+          python examples/classification.py --backend catboost --classes 3 --candidates 6 --keep 3
+          python -m pip check
+
+  release:
+    needs: [build, test-wheel]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: openfe-flex-distributions
+          path: dist
+      - name: Verify and publish tested distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python .github/scripts/distribution.py verify --tag="$RELEASE_TAG"
+          gh release create "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "OpenFE-Flex $RELEASE_TAG" --generate-notes

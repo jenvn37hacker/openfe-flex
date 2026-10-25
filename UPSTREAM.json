@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/IIIS-Li-Group/OpenFE",
+  "commit": "3e3bdf9f5b972e214e018c22f6f9f456a47b416e",
+  "version": "0.0.12",
+  "original_sha256": {
+    "openfe.py": "3f49440c0d938aa441e56bf1a91eb03c8182573359acaeba8a4af84651a4f55a",
+    "FeatureGenerator.py": "fd2c21a528f10cc31acdeebe1866464ecf6fbe1beda936316ff15f282a05ecf8",
+    "utils.py": "b6c469e3874edbec92cf4c6ecb35b5a6647635aa2174e08a6c596b1521ca6e30"
+  },
+  "local_changes": {
+    "openfe.py": [
+      "Allow backend-specific stage-2 metric names via a class attribute.",
+      "Replace removed sklearn squared=False with sqrt(mean_squared_error).",
+      "Use spawn workers rather than forking a multithreaded model runtime.",
+      "Do not change global warning filters.",
+      "Import LightGBM inside its evaluation methods so the CatBoost backend needs no LightGBM installation."
+    ]
+  }
+}

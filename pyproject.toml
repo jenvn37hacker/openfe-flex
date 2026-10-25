@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openfe-flex"
+version = "0.4.0"
+description = "Automated feature engineering with pluggable model evaluators, adapted from OpenFE"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+  "numpy>=1.26,<3", "pandas>=2,<4",
+  "scikit-learn>=1.5,<2", "scipy>=1.12,<2", "pyarrow>=19,<24",
+  "tqdm>=4.66,<5",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+]
+
+[project.optional-dependencies]
+catboost = ["catboost>=1.2.10,<2"]
+lightgbm = ["lightgbm>=4.6,<5"]
+all = ["catboost>=1.2.10,<2", "lightgbm>=4.6,<5"]
+dev = ["build>=1.2,<2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
