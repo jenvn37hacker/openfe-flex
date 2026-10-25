@@ -14,8 +14,8 @@ import tomllib
 import zipfile
 
 
-def project_version():
-    root = Path(__file__).resolve().parents[2]
+def project_version(root=None):
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
     version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
     module = ast.parse((root / "src/openfe_flex/__init__.py").read_text())
     declared = [ast.literal_eval(node.value) for node in module.body if isinstance(node, ast.Assign)
@@ -48,7 +48,7 @@ def artifacts(directory, version):
         names = set(archive.getnames())
         prefix = f"openfe_flex-{version}/"
         for name in ["LICENSE", "UPSTREAM.json", "docs/algorithm_alignment.md",
-                     "tests/test_paper_core.py", "examples/classification.py"]:
+                     "tests/test_paper_core.py", "examples/classification.py", "scripts/install_latest.py"]:
             if prefix + name not in names:
                 raise ValueError(f"Source archive is missing {name}")
     return sorted([wheel, source])

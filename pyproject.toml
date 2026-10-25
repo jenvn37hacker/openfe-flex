@@ -25,6 +25,12 @@ classifiers = [
   "Operating System :: MacOS",
 ]
 
+[project.urls]
+Repository = "https://github.com/jenvn37hacker/openfe-flex"
+Documentation = "https://github.com/jenvn37hacker/openfe-flex#readme"
+Issues = "https://github.com/jenvn37hacker/openfe-flex/issues"
+Releases = "https://github.com/jenvn37hacker/openfe-flex/releases"
+
 [project.optional-dependencies]
 catboost = ["catboost>=1.2.10,<2"]
 lightgbm = ["lightgbm>=4.6,<5"]

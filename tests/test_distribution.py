@@ -26,7 +26,7 @@ class DistributionTests(unittest.TestCase):
                 archive.writestr(f"openfe_flex-{version}.dist-info/licenses/LICENSE","MIT")
         with tarfile.open(directory/f"openfe_flex-{version}.tar.gz","w:gz") as archive:
             for name in ("LICENSE","UPSTREAM.json","docs/algorithm_alignment.md",
-                         "tests/test_paper_core.py","examples/classification.py"):
+                         "tests/test_paper_core.py","examples/classification.py","scripts/install_latest.py"):
                 member=tarfile.TarInfo(f"openfe_flex-{version}/{name}")
                 member.size=1
                 archive.addfile(member,io.BytesIO(b"x"))

@@ -40,11 +40,59 @@ openfe-flex/
 
 The distribution is `openfe-flex`; the Python import is `openfe_flex`.
 This project builds a pure Python wheel. Model libraries are external optional
-dependencies, imported when used. A tag-triggered GitHub Release workflow is included; PyPI publication is not configured.
+dependencies, imported when used. A master-push automatic GitHub Release workflow is included; PyPI publication is not configured.
 
 Version 0.3.0 renames the former `openfe-catboost` distribution and
 `openfe_catboost` import. Uninstall that old distribution, install `openfe-flex`,
 and update imports and editable source paths. Formula JSON manifests are unchanged.
+
+## Install a GitHub Release
+
+After the first automatic Release is published, install from any project without
+cloning this repository. The installer uses only Python's standard library,
+resolves the latest stable GitHub Release, verifies the wheel's SHA-256 checksum,
+and invokes pip in **the same Python environment** used to run the script.
+It does not require Git or the GitHub CLI. Use Python 3.11–3.13.
+
+Linux/macOS:
+
+```bash
+curl -fL -o install_openfe_flex.py https://raw.githubusercontent.com/jenvn37hacker/openfe-flex/master/scripts/install_latest.py
+python install_openfe_flex.py --extras catboost
+```
+
+Windows PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/jenvn37hacker/openfe-flex/master/scripts/install_latest.py' -OutFile install_openfe_flex.py
+python .\install_openfe_flex.py --extras catboost
+```
+
+If the project uses a virtual environment, replace `python` with that environment's
+Python executable (e.g. `.venv/bin/python`). Rerun to upgrade to the latest
+published version. `--extras lightgbm`, `--extras all` and `--extras none` select
+other model dependencies. No installed package or environment is deleted.
+If no Release exists yet, the installer exits with a clear message; wait for CI.
+
+For reproducible experiments, pin a published version:
+
+```bash
+python install_openfe_flex.py --version 0.4.0 --extras catboost
+```
+
+For another project's `requirements.txt`, resolve the Release into a direct pip
+requirement with a hash-pinned wheel URL:
+
+```bash
+python install_openfe_flex.py --extras catboost --print-requirement > requirements-openfe.txt
+python -m pip install -r requirements-openfe.txt
+```
+
+This records the resolved version; it does not silently follow future Releases.
+Commit the generated requirement to the consuming project. The same URL-based
+requirement can be placed in its own `requirements.txt`. A literal
+`pip install 'openfe-flex[catboost]'` queries a package index; this project is
+currently distributed through GitHub Releases, not PyPI.
 
 ## Install from source
 
@@ -250,26 +298,49 @@ losses, serial/parallel execution, manifests, schema validation and held-out bat
 invariance. Tests requiring an absent model library are skipped.
 
 CI builds one universal wheel and source archive, generates `SHA256SUMS`, then
-installs **that wheel** (never the editable checkout) on 12 combinations:
-CPython 3.11–3.13 on Linux x86-64, Windows x64, macOS Intel and macOS Apple Silicon.
+installs **that wheel** (never the editable checkout) on 15 combinations:
+CPython 3.11–3.13 on Ubuntu 22.04 and 24.04 x86-64, Windows x64, macOS Intel and
+macOS Apple Silicon.
 Each job tests core-only, LightGBM-only, then both model extras. macOS jobs install
 OpenMP for LightGBM. Remote CI results require running the workflow on GitHub;
 local checks cover the available Linux environment.
 
-The distributions are uploaded as an Actions artifact. Pushing a version-matched
-tag such as `v0.4.0` publishes a GitHub Release **only after all wheel-test jobs
-pass**. The version in `pyproject.toml`, `__version__` and the tag must agree;
-release artifacts are verified against their checksums. A failed job prevents
-the release. No remote repository or tag is created by this local implementation.
+The distributions are uploaded as an Actions artifact. Every **master push**
+automatically prepares a version, builds/tests its exact commit, uploads assets
+to a draft and publishes a GitHub Release only after all 15 test jobs pass.
+There is no manual tag step. Other branches and pull requests run tests without
+publishing. A first Release uses the current source version (initially 0.4.0);
+subsequent master updates automatically bump the patch version.
 
-After committing this independent project and adding your GitHub remote:
+CI keeps `pyproject.toml`, `__version__`, the changelog, commit and tag aligned.
+Atomic Git pushes never force-update master or existing tags. Failed builds/tests
+leave no public Release. Reruns reuse the prepared version and repair incomplete
+draft uploads; published assets are never replaced. A successful already-published
+run is skipped on retry. The built-in `GITHUB_TOKEN` and job-scoped `contents: write`
+permissions are used; no personal access token or PyPI credentials are needed.
+
+For an explicit minor or major version, open **Actions → Automatic version, wheel
+tests and GitHub Release → Run workflow**, choose `master` and select the bump.
+Default `auto` publishes the current version first and then uses patch increments.
+
+CI can add a version commit to master. Before the next local push, synchronize
+that commit (commit or stash local changes first):
 
 ```bash
-git push -u origin HEAD
-# Once ready to release the current 0.4.0 version:
-git tag v0.4.0
-git push origin v0.4.0
+git pull --rebase origin master
+git push origin master
 ```
+
+Local validation of release automation is read-only or uses temporary test repos:
+
+```bash
+python -m unittest discover -s .github/tests -v
+python .github/scripts/release.py plan
+```
+
+See [release automation](docs/releases.md) for retry behavior and the installation
+commands for consuming projects. GitHub-hosted test results appear after pushing
+these changes; local testing does not assert that every configured OS has run.
 
 Build outputs are a `py3-none-any` wheel and a source archive under `dist/`.
 The source archive includes tests, examples and alignment documentation. The

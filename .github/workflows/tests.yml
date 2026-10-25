@@ -1,11 +1,16 @@
-name: Build, test installed wheels and release
+name: Automatic version, wheel tests and GitHub Release
 
 on:
   push:
     branches: ['**']
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (auto publishes current version first, then patch)
+        type: choice
+        default: auto
+        options: [auto, patch, minor, major]
 
 permissions:
   contents: read
@@ -15,12 +20,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  automation-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s .github/tests -v
+
+  prepare:
+    needs: automation-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      ref: ${{ steps.version.outputs.ref }}
+      release: ${{ steps.version.outputs.release }}
+      skip: ${{ steps.version.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && 'refs/heads/master' || github.sha }}
+          fetch-depth: 0
+          persist-credentials: ${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Configure release bot identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Prepare version, source commit and tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_BUMP: ${{ inputs.bump || 'auto' }}
+        run: python .github/scripts/release.py prepare --bump="$VERSION_BUMP"
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -29,10 +82,9 @@ jobs:
       - run: python -m build
       - name: Verify package contents, version and checksums
         run: python .github/scripts/distribution.py prepare
-      - name: Verify release tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Verify planned version matches package
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: python .github/scripts/distribution.py verify --tag="$RELEASE_TAG"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -42,17 +94,19 @@ jobs:
           retention-days: 14
 
   test-wheel:
-    needs: build
+    needs: [prepare, build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, macos-15, macos-15-intel]
+        os: [ubuntu-22.04, ubuntu-24.04, windows-latest, macos-15, macos-15-intel]
         python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -85,8 +139,8 @@ jobs:
           python -m pip check
 
   release:
-    needs: [build, test-wheel]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, build, test-wheel]
+    if: needs.prepare.outputs.release == 'true' && github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -94,6 +148,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -105,7 +161,7 @@ jobs:
       - name: Verify and publish tested distributions
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           python .github/scripts/distribution.py verify --tag="$RELEASE_TAG"
-          gh release create "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "OpenFE-Flex $RELEASE_TAG" --generate-notes
+          python .github/scripts/release.py publish

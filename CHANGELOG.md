@@ -2,6 +2,11 @@
 
 ## 0.4.0
 
+- Automatically prepare versions and GitHub Releases on master pushes, with
+  retry recovery, atomic Git updates and verified draft publication.
+- Add a cross-platform latest/pinned Release installer with checksum checks.
+- Add Ubuntu 22.04 to installed-wheel CI, for 15 OS/Python combinations.
+
 - Enumerate all supported numerical formulas by default; a finite candidate
   budget explicitly enables reproducible reservoir sampling.
 - Select top-k features per round and optionally expand higher-order formulas
